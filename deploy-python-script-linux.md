@@ -90,10 +90,10 @@ Description=MyBot Service
 After=network.target
 
 [Service]
-ExecStart=/home/<ваш_пользователь>/mybot/venv/bin/python /home/<ваш_пользователь>/mybot/bot.py
+ExecStart=/root/MyBot/venv/bin/python /root/MyBot/main.py
+WorkingDirectory=/root/MyBot/
 Restart=always
-User=<ваш_пользователь>
-Group=<ваша_группа>
+Environment="PYTHONUNBUFFERED=1"
 StandardOutput=journal
 StandardError=journal
 
