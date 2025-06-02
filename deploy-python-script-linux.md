@@ -129,13 +129,13 @@ sudo nano <name>.service
 
 ```ini
 [Unit]
-Description=Bot multichain
+Description=<имя, котрое пидумал>
 After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/root/bot/venv/bin/python /root/bot/bot.py
-WorkingDirectory=/root/multichain_bot/
+ExecStart=/root/<созданная директория>/venv/bin/python /root/<созданная директория>/main.py
+WorkingDirectory=/root/<созданная директория>/
 Restart=always
 Environment="PYTHONUNBUFFERED=1"
 StandardOutput=journal
@@ -145,14 +145,14 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-> 🛡 Замените `<ваш_пользователь>` на имя вашего пользователя. Не используйте root!
+> 🛡 Когда закончишь редактирование, давай сохраним файл. Жми по очереди CTRL + X, Y, ENTER!
 
 ---
 
 ### 3.2 Активация сервиса
-
+выполняем команды по очереди
 ```bash
-sudo systemctl daemon-reload
+sudo cp <имя, котрое пидумал>.service /etc/systemd/system
 sudo systemctl enable mybot.service
 sudo systemctl start mybot.service
 ```
@@ -183,65 +183,7 @@ sudo systemctl status mybot.service
 
 ---
 
-## ⏱ 5. Настройка systemd-таймера (опционально)
-
-### 5.1 Создаём сервис для перезапуска
-
-```bash
-sudo nano /etc/systemd/system/mybot-restart.service
-```
-
-Вставьте:
-
-```ini
-[Unit]
-Description=One-shot Restart of mybot.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/systemctl try-restart mybot.service
-```
-
----
-
-### 5.2 Создаём таймер
-
-```bash
-sudo nano /etc/systemd/system/mybot-restart.timer
-```
-
-Вставьте:
-
-```ini
-[Unit]
-Description=Daily restart for mybot.service
-
-[Timer]
-OnCalendar=daily
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
----
-
-### 5.3 Активация таймера
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable mybot-restart.timer
-sudo systemctl start mybot-restart.timer
-```
-
-> 🕓 Проверка таймеров:  
-```bash
-systemctl list-timers
-```
-
----
-
-## 🔐 6. Рекомендации по безопасности
+## 🔐 5. Рекомендации по безопасности
 
 - **Не запускайте сервис от root!**  
   Используйте отдельного пользователя без пароля (например, `mybotuser`).
