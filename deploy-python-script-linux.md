@@ -77,6 +77,8 @@ python3 -m venv venv && source venv/bin/activate
 
 > ✅ После активации командная строка начнётся с `(venv)`
 
+### 2.1.1 Перекидываем все файлы проекта в нашу директорию кроме папки .venv
+
 ---
 
 ### 2.2 Установка зависимостей проекта
@@ -90,8 +92,8 @@ pip install -r requirements.txt
 Или устанавливайте вручную:
 
 ```bash
-pip install requests
-pip install flask
+pip install aiogram
+pip install asyncio
 ...
 ```
 
