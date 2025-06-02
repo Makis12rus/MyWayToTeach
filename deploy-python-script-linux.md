@@ -121,19 +121,21 @@ python3 main.py
 ### 3.1 Создаём unit-файл сервиса
 
 ```bash
-sudo nano /etc/systemd/system/mybot.service
+sudo nano <name>.service
 ```
+> 💡 Вместо <name> придумай имя для сервиса, которй будет перезапускть твоего бота.
 
 Вставьте в файл:
 
 ```ini
 [Unit]
-Description=MyBot Service
-After=network.target
+Description=Bot multichain
+After=multi-user.target
 
 [Service]
-ExecStart=/root/MyBot/venv/bin/python /root/MyBot/main.py
-WorkingDirectory=/root/MyBot/
+Type=simple
+ExecStart=/root/bot/venv/bin/python /root/bot/bot.py
+WorkingDirectory=/root/multichain_bot/
 Restart=always
 Environment="PYTHONUNBUFFERED=1"
 StandardOutput=journal
