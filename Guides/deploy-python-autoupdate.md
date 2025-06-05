@@ -119,7 +119,7 @@
         #
         # Или для использования внешнего API:
         # headers = {"Authorization": f"Bearer {config.EXTERNAL_API_KEY}"}
-        # response = requests.get("[https://api.example.com/data](https://api.example.com/data)", headers=headers)
+        # response = requests.get("https://api.example.com/data", headers=headers)
         # ...
         ```
 
@@ -232,7 +232,7 @@
     * Затем в терминале выполни:
 
         ```bash
-        git remote add origin [https://github.com/](https://github.com/)<ТВОЙ_ЛОГИН_GITHUB>/<ИМЯ_ТВОЕГО_РЕПОЗИТОРИЯ>.git
+        git remote add origin https://github.com/<ТВОЙ_ЛОГИН_GITHUB>/<ИМЯ_ТВОЕГО_РЕПОЗИТОРИЯ>.git
         ```
 
         * **Что делает эта команда:** Она добавляет "удаленный" репозиторий (то есть твою крепость на GitHub) и называет его `origin` (это стандартное имя для основного удаленного репозитория).
@@ -300,7 +300,7 @@
             Writing objects: 100% (Z/Z), X.XX KiB | Y.YY MiB/s, done.
             Total Z (delta A), reused B (delta C), pack-reused D
             remote: Resolving deltas: 100% (A/A), done.
-            To [https://github.com/](https://github.com/)<ТВОЙ_ЛОГИН_GITHUB>/<ИМЯ_ТВОЕГО_РЕПОЗИТОРИЯ>.git
+            To https://github.com/<ТВОЙ_ЛОГИН_GITHUB>/<ИМЯ_ТВОЕГО_РЕПОЗИТОРИЯ>.git
              * [new branch]      main -> main
             Branch 'main' set up to track remote branch 'main' from 'origin'.
             ```
