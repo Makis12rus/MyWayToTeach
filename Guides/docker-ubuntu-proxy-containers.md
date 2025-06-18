@@ -207,19 +207,24 @@
     # Убедимся, что proxychains.conf имеет правильные разрешения
     chmod 644 /etc/proxychains.conf
 
-    # Создаем скрипт в /etc/profile.d/ для автоматической настройки proxychains при входе
+    # Создаем скрипт в /etc/profile.d/ для автоматической настройки LD_PRELOAD
     # Это будет применяться для всех интерактивных оболочек (например, при SSH-подключении)
     cat <<EOF > /etc/profile.d/proxychains_auto.sh
     #!/bin/bash
     # Экспортируем LD_PRELOAD, чтобы proxychains автоматически перехватывал сетевые вызовы.
-    # Путь к библиотеке proxychains может зависеть от архитектуры (x86_64-linux-gnu, arm-linux-gnueabihf и т.д.)
-    # dpkg-architecture -qDEB_BUILD_MULTIARCH определяет правильный путь.
-    export LD_PRELOAD=/usr/lib/\$(dpkg-architecture -qDEB_BUILD_MULTIARCH)/libproxychains.so
-    # Указываем proxychains, где находится его конфигурационный файл
-    export PROXYCHAINS_CONF=/etc/proxychains.conf
-    # Необязательно: можно убрать стандартные HTTP_PROXY/HTTPS_PROXY,
-    # чтобы избежать конфликтов или если вы хотите, чтобы только proxychains рулил трафиком.
-    # unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+    # Надежный поиск libproxychains.so, так как путь может варьироваться.
+    LIB_PROXYCHAINS_PATH=\$(find /usr/lib -name "libproxychains.so" 2>/dev/null | head -n 1)
+
+    if [ -z "\$LIB_PROXYCHAINS_PATH" ]; then
+        echo "ERROR: libproxychains.so not found! Automatic proxying via LD_PRELOAD will not work." >&2
+    else
+        export LD_PRELOAD="\$LIB_PROXYCHAINS_PATH"
+        # Указываем proxychains, где находится его конфигурационный файл
+        export PROXYCHAINS_CONF="/etc/proxychains.conf"
+        # Необязательно: можно убрать стандартные HTTP_PROXY/HTTPS_PROXY,
+        # чтобы избежать конфликтов или если вы хотите, чтобы только proxychains рулил трафиком.
+        # unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+    fi
     EOF
 
     # Делаем скрипт исполняемым
