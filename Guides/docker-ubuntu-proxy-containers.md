@@ -140,104 +140,104 @@
 
     ```bash
     	#!/bin/bash
-		# =========================
-		# 📝 Файл: start.sh
-		# =========================
+	# =========================
+	# 📝 Файл: start.sh
+	# =========================
 
-		# Этот скрипт настраивает proxychains.conf динамически
-		# и активирует автоматическое использование proxychains через LD_PRELOAD
-		# для интерактивных сессий. Также запускает SSH-сервер.
+	# Этот скрипт настраивает proxychains.conf динамически
+	# и активирует автоматическое использование proxychains через LD_PRELOAD
+	# для интерактивных сессий. Также запускает SSH-сервер.
 
-		# Извлекаем данные прокси из переменной ALL_PROXY
-		# Пример: socks5://user:pass@host:port или socks5://host:port
-		PROXY_FULL_STRING="${ALL_PROXY}"
+	# Извлекаем данные прокси из переменной ALL_PROXY
+	# Пример: socks5://user:pass@host:port или socks5://host:port
+	PROXY_FULL_STRING="${ALL_PROXY}"
 
-		# Удаляем "socks5://" префикс
-		PROXY_CLEAN="${PROXY_FULL_STRING#socks5://}"
+	# Удаляем "socks5://" префикс
+	PROXY_CLEAN="${PROXY_FULL_STRING#socks5://}"
 
-		# Разделяем строку на части для аутентификации и хоста/порта
-		PROXY_HOST_PORT=""
-		PROXY_USERNAME=""
-		PROXY_PASSWORD=""
+	# Разделяем строку на части для аутентификации и хоста/порта
+	PROXY_HOST_PORT=""
+	PROXY_USERNAME=""
+	PROXY_PASSWORD=""
 
-		if [[ "${PROXY_CLEAN}" == *"@"* ]]; then
-			# Если есть @, значит есть user:pass (логин и пароль)
-			AUTH_PART="${PROXY_CLEAN%@*}"
-			PROXY_HOST_PORT="${PROXY_CLEAN#*@}"
-			PROXY_USERNAME="${AUTH_PART%:*}"
-			PROXY_PASSWORD="${AUTH_PART#*:}"
-		else
-			# Нет @, значит нет user:pass (менее вероятно для твоих прокси)
-			PROXY_HOST_PORT="${PROXY_CLEAN}"
-		fi
+	if [[ "${PROXY_CLEAN}" == *"@"* ]]; then
+		# Если есть @, значит есть user:pass (логин и пароль)
+		AUTH_PART="${PROXY_CLEAN%@*}"
+		PROXY_HOST_PORT="${PROXY_CLEAN#*@}"
+		PROXY_USERNAME="${AUTH_PART%:*}"
+		PROXY_PASSWORD="${AUTH_PART#*:}"
+	else
+		# Нет @, значит нет user:pass (менее вероятно для твоих прокси)
+		PROXY_HOST_PORT="${PROXY_CLEAN}"
+	fi
 
-		# Извлекаем хост (IP или домен) и порт
-		PROXY_HOST="${PROXY_HOST_PORT%:*}"
-		PROXY_PORT="${PROXY_HOST_PORT#*:}"
+	# Извлекаем хост (IP или домен) и порт
+	PROXY_HOST="${PROXY_HOST_PORT%:*}"
+	PROXY_PORT="${PROXY_HOST_PORT#*:}"
 
-		# Создаем файл конфигурации proxychains
-		# strict_chain - значит, что трафик пойдет только через прокси
-		# proxy_dns - DNS-запросы тоже пойдут через прокси
-		cat <<EOF > /etc/proxychains.conf
-		strict_chain
-		proxy_dns
-		# Указываем DNS-серверы, которые proxychains будет использовать через прокси
-		nameserver 8.8.8.8
-		nameserver 1.1.1.1
-		tcp_read_time_out 15000
-		tcp_connect_time_out 8000
+	# Создаем файл конфигурации proxychains
+	# strict_chain - значит, что трафик пойдет только через прокси
+	# proxy_dns - DNS-запросы тоже пойдут через прокси
+	cat <<EOF > /etc/proxychains.conf
+	strict_chain
+	proxy_dns
+	# Указываем DNS-серверы, которые proxychains будет использовать через прокси
+	nameserver 8.8.8.8
+	nameserver 1.1.1.1
+	tcp_read_time_out 15000
+	tcp_connect_time_out 8000
 
-		[ProxyList]
-		EOF
+	[ProxyList]
+	EOF
 
-		# Добавляем строку с прокси в зависимости от наличия аутентификации
-		if [[ -n "$PROXY_USERNAME" ]]; then
-			echo "socks5 ${PROXY_HOST} ${PROXY_PORT} ${PROXY_USERNAME} ${PROXY_PASSWORD}" >> /etc/proxychains.conf
-		else
-			# Если прокси без аутентификации (например, открытый прокси)
-			echo "socks5 ${PROXY_HOST} ${PROXY_PORT}" >> /etc/proxychains.conf
-		fi
+	# Добавляем строку с прокси в зависимости от наличия аутентификации
+	if [[ -n "$PROXY_USERNAME" ]]; then
+		echo "socks5 ${PROXY_HOST} ${PROXY_PORT} ${PROXY_USERNAME} ${PROXY_PASSWORD}" >> /etc/proxychains.conf
+	else
+		# Если прокси без аутентификации (например, открытый прокси)
+		echo "socks5 ${PROXY_HOST} ${PROXY_PORT}" >> /etc/proxychains.conf
+	fi
 
-		# Убедимся, что proxychains.conf имеет правильные разрешения
-		chmod 644 /etc/proxychains.conf
+	# Убедимся, что proxychains.conf имеет правильные разрешения
+	chmod 644 /etc/proxychains.conf
 
-		# Создаем скрипт в /etc/profile.d/ для автоматической настройки LD_PRELOAD
-		# Это будет применяться для всех интерактивных оболочек (например, при SSH-подключении)
-		cat <<EOF > /etc/profile.d/proxychains_auto.sh
-		#!/bin/bash
-		# Экспортируем LD_PRELOAD, чтобы proxychains автоматически перехватывал сетевые вызовы.
-		# Надежный поиск libproxychains.so с использованием dpkg -L.
+	# Создаем скрипт в /etc/profile.d/ для автоматической настройки LD_PRELOAD
+	# Это будет применяться для всех интерактивных оболочек (например, при SSH-подключении)
+	cat <<EOF > /etc/profile.d/proxychains_auto.sh
+	#!/bin/bash
+	# Экспортируем LD_PRELOAD, чтобы proxychains автоматически перехватывал сетевые вызовы.
+	# Надежный поиск libproxychains.so с использованием dpkg -L.
 
-		LIB_PROXYCHAINS_PATH=\$(dpkg -L proxychains 2>/dev/null | grep 'libproxychains.so\$' | head -n 1)
+	LIB_PROXYCHAINS_PATH=\$(dpkg -L proxychains 2>/dev/null | grep 'libproxychains.so\$' | head -n 1)
 
-		# Если dpkg -L не нашел, попробуем find в стандартных библиотечных путях
-		if [ -z "\$LIB_PROXYCHAINS_PATH" ]; then
-			echo "DEBUG: dpkg -L proxychains did not find libproxychains.so. Trying common library paths with find." >&2
-			LIB_PROXYCHAINS_PATH=\$(find /usr/lib /lib -name "libproxychains.so" 2>/dev/null | head -n 1)
-		fi
+	# Если dpkg -L не нашел, попробуем find в стандартных библиотечных путях
+	if [ -z "\$LIB_PROXYCHAINS_PATH" ]; then
+		echo "DEBUG: dpkg -L proxychains did not find libproxychains.so. Trying common library paths with find." >&2
+		LIB_PROXYCHAINS_PATH=\$(find /usr/lib /lib -name "libproxychains.so" 2>/dev/null | head -n 1)
+	fi
 
-		if [ -z "\$LIB_PROXYCHAINS_PATH" ]; then
-			echo "CRITICAL ERROR: libproxychains.so not found using any method! Automatic proxying via LD_PRELOAD will NOT work." >&2
-			echo "Please inspect the container manually: 'docker exec -it <container_name> bash'" >&2
-			echo "Then run 'dpkg -L proxychains' or 'find / -name \"libproxychains.so\"' to locate it." >&2
-		else
-			export LD_PRELOAD="\$LIB_PROXYCHAINS_PATH"
-			# Указываем proxychains, где находится его конфигурационный файл
-			export PROXYCHAINS_CONF="/etc/proxychains.conf"
-			# Необязательно: можно убрать стандартные HTTP_PROXY/HTTPS_PROXY,
-			# чтобы избежать конфликтов или если вы хотите, чтобы только proxychains рулил трафиком.
-			# unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
-			echo "INFO: libproxychains.so found at \$LIB_PROXYCHAINS_PATH. LD_PRELOAD and PROXYCHAINS_CONF are set." >&2
-		fi
-		EOF
+	if [ -z "\$LIB_PROXYCHAINS_PATH" ]; then
+		echo "CRITICAL ERROR: libproxychains.so not found using any method! Automatic proxying via LD_PRELOAD will NOT work." >&2
+		echo "Please inspect the container manually: 'docker exec -it <container_name> bash'" >&2
+		echo "Then run 'dpkg -L proxychains' or 'find / -name \"libproxychains.so\"' to locate it." >&2
+	else
+		export LD_PRELOAD="\$LIB_PROXYCHAINS_PATH"
+		# Указываем proxychains, где находится его конфигурационный файл
+		export PROXYCHAINS_CONF="/etc/proxychains.conf"
+		# Необязательно: можно убрать стандартные HTTP_PROXY/HTTPS_PROXY,
+		# чтобы избежать конфликтов или если вы хотите, чтобы только proxychains рулил трафиком.
+		# unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+		echo "INFO: libproxychains.so found at \$LIB_PROXYCHAINS_PATH. LD_PRELOAD and PROXYCHAINS_CONF are set." >&2
+	fi
+	EOF
 
-		# Делаем скрипт исполняемым
-		chmod +x /etc/profile.d/proxychains_auto.sh
+	# Делаем скрипт исполняемым
+	chmod +x /etc/profile.d/proxychains_auto.sh
 
-		# Запускаем SSH-сервер как основной процесс (PID 1)
-		# Это гарантирует, что контейнер будет оставаться запущенным,
-		# пока работает SSH-сервер.
-		exec /usr/sbin/sshd -D
+	# Запускаем SSH-сервер как основной процесс (PID 1)
+	# Это гарантирует, что контейнер будет оставаться запущенным,
+	# пока работает SSH-сервер.
+	exec /usr/sbin/sshd -D
     ```
     * **Что ты увидишь**: Создание файла `start.sh` и изменения его прав на исполняемые.
     * Ты получишь: Скрипт, который будет автоматически генерировать правильный `proxychains.conf` для каждого контейнера при его запуске, используя уникальные данные прокси из переменных окружения. Это как дать каждому домику свой личный навигатор! 🗺️
