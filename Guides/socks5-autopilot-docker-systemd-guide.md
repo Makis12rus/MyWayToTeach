@@ -229,9 +229,9 @@
         # unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
         echo "INFO: libproxychains.so found at \$LIB_PROXYCHAINS_PATH. LD_PRELOAD and PROXYCHAINS_CONF are set." >&2
     fi
-EOF
-    chmod +x /etc/profile.d/proxychains_auto.sh
-    echo "INFO: /etc/profile.d/proxychains_auto.sh сгенерирован."
+    EOF
+        chmod +x /etc/profile.d/proxychains_auto.sh
+        echo "INFO: /etc/profile.d/proxychains_auto.sh сгенерирован."
 
     # Принудительная активация LD_PRELOAD в текущей оболочке для теста
     echo "INFO: Принудительная активация LD_PRELOAD в текущей оболочке..."
