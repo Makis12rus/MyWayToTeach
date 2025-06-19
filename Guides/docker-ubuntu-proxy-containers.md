@@ -272,27 +272,32 @@ echo "DEBUG: PROXY_PASSWORD: '${PROXY_PASSWORD}'"
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
 
-# Создаем конфигурационный файл redsocks, используя printf для каждой строки для надежности
-printf "%s\n" "base {" > "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    log_debug = off;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    daemon = on;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
+# Создаем конфигурационный файл redsocks
+cat > "${REDSOCKS_CONF_PATH}" <<EOF
+base {
+    log_debug = off;
+    log_info = on;
+    log = "syslog";
+    daemon = on;
+}
 
-# Добавляем секцию redsocks-ipq для прозрачного проксирования
-# Это критически важно, так как Redsocks требует определения "редиректора"
-printf "%s\n" "redsocks-ipq {" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    bind = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}" # Добавлена директива bind
-printf "%s\n" "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    redireсt = ${PROXY_HOST}:${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}" # Заменено proxy на redirect
-printf "%s\n" "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}"
+redsocks-ipq {
+    bind = 0.0.0.0;
+    local_ip = 0.0.0.0;
+    local_port = 12345;
+    redirect = ${PROXY_HOST}:${PROXY_PORT};
+    type = ${PROTOCOL};
+EOF
+
+# Добавляем данные для аутентификации, если они есть
 if [[ -n "${PROXY_USERNAME}" ]]; then
-    printf "%s\n" "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
-    printf "%s\n" "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
+    cat >> "${REDSOCKS_CONF_PATH}" <<EOF
+    login = "${PROXY_USERNAME}";
+    password = "${PROXY_PASSWORD}";
+EOF
 fi
-printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
+
+echo "}" >> "${REDSOCKS_CONF_PATH}" # Closing bracket for redsocks-ipq
 
 
 # Устанавливаем права на файл конфигурации
@@ -348,7 +353,15 @@ for NETWORK_EXC in ${NO_PROXY//,/ }; do
         # Для простоты, исключим их из проксирования на уровне DNS или через прямое исключение, если они разрешаются в IP.
         # В данном случае, так как NO_PROXY - это только адреса, которые не надо проксировать,
         # а не маршруты, их добавление сюда гарантирует, что Redsocks не будет пытаться через них ходить.
-        echo "INFO: Исключение по имени хоста/сервиса: $NETWORK_EXC (будет обработано на уровне DNS/маршрутизации)."
+        # ИСПОЛЬЗУЕМ `getent ahostsv4` ДЛЯ РАЗРЕШЕНИЯ ИМЕН В IP, ЕСЛИ ЭТО ИМЯ ХОСТА
+        local resolved_ip=$(getent ahostsv4 "$NETWORK_EXC" | awk '{print $1; exit}')
+        if [ -n "$resolved_ip" ]; then
+            iptables -t nat -A OUTPUT -d "$resolved_ip" -j RETURN
+            iptables -t nat -A PREROUTING -d "$resolved_ip" -j RETURN
+            echo "INFO: Исключен адрес: $resolved_ip (для $NETWORK_EXC)"
+        else
+            echo "WARNING: Не удалось разрешить IP для исключения $NETWORK_EXC. Проверьте правильность имени хоста."
+        fi
     fi
 done
 
@@ -380,30 +393,11 @@ echo "INFO: redsocks будет запущен через supervisord."
 # --- Генерация SSH-ключей хоста (если они отсутствуют) ---
 echo "INFO: Проверка и генерация SSH-ключей хоста..."
 ssh-keygen -A
-echo "INFO: SSH-ключи хоста сгенерированы (если требовалось). sensitive"
-
-# --- Получение внешнего IP через настроенный прокси для MOTD ---
-EXTERNAL_IP="Неизвестно"
-echo "INFO: Получение внешнего IP через Redsocks..."
-# curl теперь автоматически пойдет через redsocks благодаря iptables
-# Используем timeout на случай зависания запроса
-EXTERNAL_IP=$(curl -s --max-time 10 ifconfig.me || echo "Ошибка получения IP")
-echo "INFO: Внешний IP через прокси: ${EXTERNAL_IP}"
-
-# --- Добавление MOTD (Message of the Day) для отображения при SSH-подключении ---
-echo "INFO: Генерация приветственного сообщения (MOTD)..."
-cat <<EOF > /etc/motd
-Добро пожаловать на ваш прокси-сервер Ubuntu!
-
-Ваш внешний IP через прокси: ${EXTERNAL_IP}
-Весь исходящий TCP трафик контейнера проксируется.
-EOF
-chmod 644 /etc/motd
-echo "INFO: Приветственное сообщение (MOTD) сгенерировано."
+echo "INFO: SSH-ключи хоста сгенерированы (если требовалось)."
 
 echo "INFO: start.sh завершил подготовку. Запускаем supervisord..."
 # Запускаем supervisord как основной процесс контейнера
-# Он будет управлять SSHD и Redsocks
+# Он будет управлять SSHD и Redsocks, а также ip_updater
 exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
 ```
 
@@ -446,6 +440,15 @@ autostart=true
 autorestart=true
 stdout_logfile=/var/log/supervisor/redsocks.log
 stderr_logfile=/var/log/supervisor/redsocks_error.log
+loglevel=info
+
+[program:ip_updater]
+; Обновляет внешний IP в MOTD каждые 30 секунд
+command=bash -c "while true; do EXTERNAL_IP=$(curl -s --max-time 10 ifconfig.me || echo \"Ошибка получения IP\"); echo \"Добро пожаловать на ваш прокси-сервер Ubuntu!\n\nВаш внешний IP через прокси: ${EXTERNAL_IP}\nВесь исходящий TCP трафик контейнера проксируется.\" > /etc/motd; chmod 644 /etc/motd; sleep 30; done"
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/ip_updater.log
+stderr_logfile=/var/log/supervisor/ip_updater_error.log
 loglevel=info
 
 ```
