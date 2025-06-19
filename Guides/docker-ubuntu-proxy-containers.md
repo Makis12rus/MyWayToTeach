@@ -262,7 +262,8 @@ PROXY_PORT="${PROXY_HOST_PORT#*:}"
 # --- Настройка Redsocks ---
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
-# Создаем конфигурационный файл redsocks
+# Создаем конфигурационный файл redsocks. Теперь он всегда будет корректно сформирован.
+{ # Открывающая скобка для блока, чтобы cat <<EOF ... EOF был в одной команде
 cat <<EOF > ${REDSOCKS_CONF_PATH}
 base {
     log_debug = off;
@@ -278,7 +279,6 @@ redsocks {
     port = ${PROXY_PORT};
 
     type = ${PROTOCOL}; # socks5 или http
-
 EOF
 
 # Добавляем данные для аутентификации, если они есть
@@ -292,6 +292,7 @@ fi
 cat <<EOF >> ${REDSOCKS_CONF_PATH}
 }
 EOF
+} # Закрывающая скобка для блока
 # Устанавливаем права на файл конфигурации
 chmod 644 ${REDSOCKS_CONF_PATH}
 echo "INFO: Redsocks конфигурация сгенерирована в ${REDSOCKS_CONF_PATH}."
@@ -360,7 +361,7 @@ echo "INFO: redsocks будет запущен через supervisord."
 # --- Генерация SSH-ключей хоста (если они отсутствуют) ---
 echo "INFO: Проверка и генерация SSH-ключей хоста..."
 ssh-keygen -A
-echo "INFO: SSH-ключи хоста сгенерированы (если требовалось)."
+echo "INFO: SSH-ключи хоста сгенерированы (если требовалось). сен."
 
 # --- Получение внешнего IP через настроенный прокси для MOTD ---
 EXTERNAL_IP="Неизвестно"
@@ -539,6 +540,7 @@ services:
     build: .
     container_name: ubuntu_proxy_universal_s2
     # Добавляем необходимые Linux capabilities для работы с IPTABLES.
+    # Это позволяет контейнеру изменять сетевые правила хоста.
     cap_add:
       - NET_ADMIN
     # Пробрасываем порты: "ПОРТ_НА_ХОСТЕ:ПОРТ_ВНУТРИ_КОНТЕЙНЕРА".
@@ -764,7 +766,6 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 
 **MobaXterm (рекомендуется для Windows):**
 
-[Image of MobaXterm interface]
 
 
 Это мощный инструмент, который объединяет SSH-клиент, SFTP, терминал и многое другое.
@@ -789,7 +790,6 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 
 **Termius (кроссплатформенный: Windows, macOS, Linux, Mobile):**
 
-[Image of Termius interface]
 
 
 Современный и удобный SSH-клиент с синхронизацией.
@@ -812,7 +812,6 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 
 **PuTTY (для Windows):**
 
-[Image of PuTTY interface]
 
 
 Классический и легковесный SSH-клиент.
