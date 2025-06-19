@@ -271,48 +271,28 @@ echo "DEBUG: PROXY_PASSWORD: '${PROXY_PASSWORD}'"
 # --- Настройка Redsocks ---
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
-REDSOCKS_CONF_TEMPLATE_PATH="/tmp/redsocks.conf.template"
 
-# Создаем шаблон Redsocks конфигурации с заполнителями
-cat <<'EOF_TEMPLATE' > "${REDSOCKS_CONF_TEMPLATE_PATH}"
-base {
-    log_debug = off;
-    log_info = on;
-    log = "syslog";
-    daemon = on;
-}
-redsocks {
-    local_ip = 0.0.0.0;
-    local_port = 12345;
+# Создаем конфигурационный файл redsocks, используя printf для каждой строки для надежности
+printf "%s\n" "base {" > "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    log_debug = off;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    daemon = on;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "redsocks {" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    ip = ${PROXY_HOST};" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    port = ${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}"
 
-    ip = ${PROXY_HOST};
-    port = ${PROXY_PORT};
-
-    type = ${PROTOCOL};
-${AUTH_SECTION}
-}
-EOF_TEMPLATE
-
-# Формируем секцию аутентификации
-AUTH_SECTION=""
+# Добавляем данные для аутентификации, если они есть
 if [[ -n "${PROXY_USERNAME}" ]]; then
-    AUTH_SECTION="    login = \"${PROXY_USERNAME}\";\n    password = \"${PROXY_PASSWORD}\";"
+    printf "%s\n" "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
+    printf "%s\n" "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
 fi
 
-# Используем envsubst для подстановки переменных в шаблон
-# Exporting variables makes them available to envsubst
-export PROXY_HOST PROXY_PORT PROTOCOL AUTH_SECTION
-
-# Проверяем, что envsubst доступен
-if ! command -v envsubst &> /dev/null; then
-    echo "CRITICAL ERROR: envsubst not found. It should have been installed via 'gettext' package in Dockerfile." >&2
-    exit 1
-fi
-
-envsubst < "${REDSOCKS_CONF_TEMPLATE_PATH}" > "${REDSOCKS_CONF_PATH}" || {
-    echo "CRITICAL ERROR: Failed to substitute environment variables into redsocks.conf." >&2
-    exit 1
-}
+printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
 
 # Устанавливаем права на файл конфигурации
 chmod 644 ${REDSOCKS_CONF_PATH}
@@ -399,7 +379,7 @@ echo "INFO: redsocks будет запущен через supervisord."
 # --- Генерация SSH-ключей хоста (если они отсутствуют) ---
 echo "INFO: Проверка и генерация SSH-ключей хоста..."
 ssh-keygen -A
-echo "INFO: SSH-ключи хоста сгенерированы (если требовалось)."
+echo "INFO: SSH-ключи хоста сгенерированы (если требовалось). sensitive"
 
 # --- Получение внешнего IP через настроенный прокси для MOTD ---
 EXTERNAL_IP="Неизвестно"
