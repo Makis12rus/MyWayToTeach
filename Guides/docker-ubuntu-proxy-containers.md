@@ -271,32 +271,27 @@ echo "DEBUG: PROXY_PASSWORD: '${PROXY_PASSWORD}'"
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
 
-# Создаем конфигурационный файл redsocks
-cat > "${REDSOCKS_CONF_PATH}" <<EOF
-base {
-    log_debug = off;
-    log_info = on;
-    log = "syslog";
-    daemon = off; # ИЗМЕНЕНО: redsocks не должен демонизироваться, так как управляется supervisord
-}
+# Создаем конфигурационный файл redsocks, построчно
+echo "base {" > "${REDSOCKS_CONF_PATH}"
+echo "    log_debug = off;" >> "${REDSOCKS_CONF_PATH}"
+echo "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
+echo "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}"
+echo "    daemon = off; # ИЗМЕНЕНО: redsocks не должен демонизироваться, так как управляется supervisord" >> "${REDSOCKS_CONF_PATH}"
+echo "}" >> "${REDSOCKS_CONF_PATH}"
+echo "" >> "${REDSOCKS_CONF_PATH}" # Добавляем пустую строку для лучшего форматирования
 
-redsocks-ipq {
-    bind = 0.0.0.0;
-    local_ip = 0.0.0.0;
-    local_port = 12345;
-    redirect = ${PROXY_HOST}:${PROXY_PORT};
-    type = ${PROTOCOL};
-EOF
+echo "redsocks-ipq {" >> "${REDSOCKS_CONF_PATH}"
+echo "    bind = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
+echo "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
+echo "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}"
+echo "    redirect = ${PROXY_HOST}:${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
+echo "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}"
 
-# Добавляем данные для аутентификации, если они есть
 if [[ -n "${PROXY_USERNAME}" ]]; then
-    cat >> "${REDSOCKS_CONF_PATH}" <<EOF
-    login = "${PROXY_USERNAME}";
-    password = "${PROXY_PASSWORD}";
-EOF
+    echo "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
+    echo "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
 fi
-
-echo "}" >> "${REDSOCKS_CONF_PATH}" # Closing bracket for redsocks-ipq
+echo "}" >> "${REDSOCKS_CONF_PATH}"
 
 
 # Устанавливаем права на файл конфигурации
@@ -312,6 +307,11 @@ sleep 1 # Даем файловой системе время на запись 
 
 # !!! КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Проверка синтаксиса Redsocks конфигурации !!!
 echo "INFO: Testing redsocks.conf syntax..."
+# Проверяем исполняемый файл redsocks и его зависимости
+echo "DEBUG: Проверка исполняемого файла redsocks:"
+file /usr/sbin/redsocks || { echo "CRITICAL ERROR: Исполняемый файл redsocks не найден или не является исполняемым."; exit 1; }
+ldd /usr/sbin/redsocks || { echo "CRITICAL ERROR: Отсутствуют зависимости для redsocks. Возможно, повреждена установка."; exit 1; }
+
 /usr/sbin/redsocks -c "${REDSOCKS_CONF_PATH}" -t || {
     echo "CRITICAL ERROR: Redsocks configuration file is invalid. Please check the proxy details in docker-compose.yml and the generated config above." >&2
     # Печатаем содержимое redsocks.conf в случае ошибки для диагностики
@@ -355,10 +355,6 @@ for NETWORK_EXC in ${NO_PROXY//,/ }; do
         iptables -t nat -A OUTPUT -d 127.0.0.1/8 -j RETURN
         iptables -t nat -A PREROUTING -d 127.0.0.1/8 -j RETURN
     elif [[ "$NETWORK_EXC" == "host.docker.internal" || "$NETWORK_EXC" == "docker-desktop" ]]; then
-        # Для этих имен резолвинг IP может отличаться, но в большинстве случаев они ведут на локальные адреса хоста.
-        # Для простоты, исключим их из проксирования на уровне DNS или через прямое исключение, если они разрешаются в IP.
-        # В данном случае, так как NO_PROXY - это только адреса, которые не надо проксировать,
-        # а не маршруты, их добавление сюда гарантирует, что Redsocks не будет пытаться через них ходить.
         # ИСПОЛЬЗУЕМ `getent ahostsv4` ДЛЯ РАЗРЕШЕНИЯ ИМЕН В IP, ЕСЛИ ЭТО ИМЯ ХОСТА
         local resolved_ip=$(getent ahostsv4 "$NETWORK_EXC" | awk '{print $1; exit}')
         if [ -n "$resolved_ip" ]; then
@@ -404,7 +400,7 @@ echo "INFO: SSH-ключи хоста сгенерированы (если тр�
 
 echo "INFO: start.sh завершил подготовку. Запускаем supervisord..."
 # Добавляем небольшую задержку перед запуском supervisord, чтобы все подготовительные шаги завершились.
-sleep 2 
+sleep 2
 # Запускаем supervisord как основной процесс контейнера
 # Он будет управлять SSHD и Redsocks, а также ip_updater
 exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
