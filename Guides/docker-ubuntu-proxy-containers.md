@@ -139,8 +139,9 @@ FROM ubuntu:22.04
 # iptables-persistent - Для сохранения правил iptables после перезапуска.
 # dnsutils - для диагностики DNS, чтобы утилита dig всегда была доступна
 # gettext - содержит утилиту envsubst для надежной подстановки переменных в конфиги
+# file - для утилиты 'file' (для проверки исполняемого файла redsocks)
 RUN apt update && \
-    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent dnsutils gettext && \
+    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent dnsutils gettext file && \
     # Очищаем кэш apt, чтобы уменьшить размер образа
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
@@ -439,7 +440,6 @@ loglevel=info
 
 [program:redsocks]
 ; Запускаем Redsocks с нашей конфигурацией
-; ПУТЬ ИСПРАВЛЕН НА /usr/sbin/redsocks
 command=/usr/sbin/redsocks -c /etc/redsocks.conf
 autostart=true
 autorestart=true
