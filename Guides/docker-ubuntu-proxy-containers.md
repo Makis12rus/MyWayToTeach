@@ -128,6 +128,12 @@
 # Базовый образ: Мы начинаем с чистой Ubuntu 22.04
 FROM ubuntu:22.04
 
+# !!! КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Установка DNS-сервера для этапа сборки !!!
+# Это гарантирует, что apt update сможет разрешать доменные имена
+# даже если внешняя сеть еще не настроена через Redsocks.
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
+    echo "INFO: DNS-сервер 8.8.8.8 добавлен в resolv.conf для сборки."
+
 # Обновляем пакеты и устанавливаем необходимые программы:
 # openssh-server - для SSH-доступа
 # curl - для проверки внешнего IP и других сетевых запросов
@@ -260,62 +266,58 @@ fi
 PROXY_HOST="${PROXY_HOST_PORT%:*}"
 PROXY_PORT="${PROXY_HOST_PORT#*:}"
 
+# --- Отладочный вывод переменных прокси ---
+echo "DEBUG: PROXY_HOST: '${PROXY_HOST}'"
+echo "DEBUG: PROXY_PORT: '${PROXY_PORT}'"
+echo "DEBUG: PROTOCOL: '${PROTOCOL}'"
+echo "DEBUG: PROXY_USERNAME: '${PROXY_USERNAME}'"
+echo "DEBUG: PROXY_PASSWORD: '${PROXY_PASSWORD}'"
+
 # --- Настройка Redsocks ---
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
 
-# Создаем временный файл Redsocks конфигурации с заполнителями
-cat <<'EOF_REDSOCKS' > "${REDSOCKS_CONF_PATH}.tmp"
-base {
-    log_debug = off;
-    log_info = on;
-    log = "syslog"; # Логирование в системный журнал
-    daemon = on; # Запускать как демон
-}
-redsocks {
-    local_ip = 0.0.0.0; # Слушать на всех интерфейсах
-    local_port = 12345; # Локальный порт, на который будет перенаправляться трафик
+# Создаем конфигурационный файл redsocks, используя printf для каждой строки для надежности
+printf "%s\n" "base {" > "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    log_debug = off;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    daemon = on;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "redsocks {" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    ip = ${PROXY_HOST};" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    port = ${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}"
 
-    ip = __PROXY_HOST__;
-    port = __PROXY_PORT__;
-
-    type = __PROTOCOL__; # socks5 или http
-__AUTH_SECTION__
-}
-EOF_REDSOCKS
-
-# Заполняем заполнители фактическими значениями
-AUTH_SECTION=""
+# Добавляем данные для аутентификации, если они есть
 if [[ -n "$PROXY_USERNAME" ]]; then
-    AUTH_SECTION="    login = \"${PROXY_USERNAME}\";\n    password = \"${PROXY_PASSWORD}\";"
+    printf "%s\n" "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
+    printf "%s\n" "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
 fi
 
-sed -i "s|__PROXY_HOST__|${PROXY_HOST}|g" "${REDSOCKS_CONF_PATH}.tmp"
-sed -i "s|__PROXY_PORT__|${PROXY_PORT}|g" "${REDSOCKS_CONF_PATH}.tmp"
-sed -i "s|__PROTOCOL__|${PROTOCOL}|g" "${REDSOCKS_CONF_PATH}.tmp"
-# sed -i "s|__AUTH_SECTION__|${AUTH_SECTION}|g" "${REDSOCKS_CONF_PATH}.tmp" # Эта строка была проблемой, она не обрабатывает переносы строк в AUTH_SECTION
-
-# Для вставки секции с аутентификацией используем echo с заменой \n на реальные переносы
-if [[ -n "$PROXY_USERNAME" ]]; then
-    # Если есть аутентификация, вставляем строки логина и пароля
-    # GNU sed (на Ubuntu) понимает \n как символ новой строки. BSD sed (macOS) не понимает.
-    # Используем подход, который работает с обоими:
-    # Заменяем __AUTH_SECTION__ на placeholder, а затем заменяем placeholder на многострочный текст
-    sed -i "s|__AUTH_SECTION__|TEMP_AUTH_PLACEHOLDER|g" "${REDSOCKS_CONF_PATH}.tmp"
-    sed -i "/TEMP_AUTH_PLACEHOLDER/c\\
-        login = \"${PROXY_USERNAME}\";\\
-        password = \"${PROXY_PASSWORD}\";" "${REDSOCKS_CONF_PATH}.tmp"
-else
-    # Если нет аутентификации, просто удаляем placeholder
-    sed -i "/__AUTH_SECTION__/d" "${REDSOCKS_CONF_PATH}.tmp"
-fi
-
-# Перемещаем временный файл на место
-mv "${REDSOCKS_CONF_PATH}.tmp" "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
 
 # Устанавливаем права на файл конфигурации
 chmod 644 ${REDSOCKS_CONF_PATH}
 echo "INFO: Redsocks конфигурация сгенерирована в ${REDSOCKS_CONF_PATH}."
+
+# !!! КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Проверка синтаксиса Redsocks конфигурации !!!
+echo "INFO: Testing redsocks.conf syntax..."
+/usr/sbin/redsocks -c "${REDSOCKS_CONF_PATH}" -t || {
+    echo "CRITICAL ERROR: Redsocks configuration file is invalid. Please check the proxy details in docker-compose.yml and the generated config above." >&2
+    # Печатаем содержимое redsocks.conf в случае ошибки для диагностики
+    echo "--- Start of invalid redsocks.conf ---" >&2
+    cat "${REDSOCKS_CONF_PATH}" >&2
+    echo "--- End of invalid redsocks.conf ---" >&2
+    exit 1
+}
+echo "INFO: Redsocks configuration syntax is OK."
+
+# --- Печать сгенерированного redsocks.conf для проверки ---
+echo "INFO: Generated redsocks.conf content:"
+cat "${REDSOCKS_CONF_PATH}"
 
 # --- Настройка IPTABLES для прозрачного проксирования ---
 echo "INFO: Настройка правил IPTABLES для прозрачного проксирования..."
