@@ -140,8 +140,9 @@ FROM ubuntu:22.04
 # dnsutils - для диагностики DNS, чтобы утилита dig всегда была доступна
 # gettext - содержит утилиту envsubst для надежной подстановки переменных в конфиги
 # file - для утилиты 'file' (для проверки исполняемого файла redsocks)
+# bsdmainutils - для утилиты 'od' (octal dump), которая поможет в отладке невидимых символов
 RUN apt update && \
-    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent dnsutils gettext file && \
+    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent dnsutils gettext file bsdmainutils && \
     # Очищаем кэш apt, чтобы уменьшить размер образа
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
