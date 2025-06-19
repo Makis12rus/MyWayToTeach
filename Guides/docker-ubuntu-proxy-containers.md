@@ -294,6 +294,20 @@ fi
 
 printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
 
+# Добавляем секцию redsocks-ipq для прозрачного проксирования
+# Это критически важно, так как Redsocks требует определения "редиректора"
+printf "%s\n" "redsocks-ipq {" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    proxy = ${PROXY_HOST}:${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
+printf "%s\n" "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}"
+if [[ -n "${PROXY_USERNAME}" ]]; then
+    printf "%s\n" "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
+    printf "%s\n" "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
+fi
+printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
+
+
 # Устанавливаем права на файл конфигурации
 chmod 644 ${REDSOCKS_CONF_PATH}
 echo "INFO: Redsocks конфигурация сгенерирована в ${REDSOCKS_CONF_PATH}."
