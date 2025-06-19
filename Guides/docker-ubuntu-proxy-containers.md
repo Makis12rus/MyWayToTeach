@@ -137,8 +137,9 @@ FROM ubuntu:22.04
 # supervisor - Система инициализации, которая будет управлять несколькими процессами (SSH, Redsocks) в контейнере,
 #              так как systemd в контейнерах не используется как PID 1.
 # iptables-persistent - Для сохранения правил iptables после перезапуска.
+# dnsutils - для диагностики DNS, чтобы утилита dig всегда была доступна
 RUN apt update && \
-    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent && \
+    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent dnsutils && \
     # Очищаем кэш apt, чтобы уменьшить размер образа
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
@@ -262,28 +263,55 @@ PROXY_PORT="${PROXY_HOST_PORT#*:}"
 # --- Настройка Redsocks ---
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
-# Создаем конфигурационный файл redsocks. Теперь он всегда будет корректно сформирован.
-# Используем здесь более надежный способ, чтобы избежать проблем с экранированием.
-printf '%s\n' "base {" > "${REDSOCKS_CONF_PATH}"
-printf '%s\n' "    log_debug = off;" >> "${REDSOCKS_CONF_PATH}"
-printf '%s\n' "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
-printf '%s\n' "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}" # Логирование в системный журнал
-printf '%s\n' "    daemon = on;" >> "${REDSOCKS_CONF_PATH}" # Запускать как демон
-printf '%s\n' "}" >> "${REDSOCKS_CONF_PATH}"
-printf '%s\n' "redsocks {" >> "${REDSOCKS_CONF_PATH}"
-printf '%s\n' "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}" # Слушать на всех интерфейсах
-printf '%s\n' "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}" # Локальный порт, на который будет перенаправляться трафик
-printf '%s\n' "    ip = ${PROXY_HOST};" >> "${REDSOCKS_CONF_PATH}"
-printf '%s\n' "    port = ${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
-printf '%s\n' "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}" # socks5 или http
 
-# Добавляем данные для аутентификации, если они есть
+# Создаем временный файл Redsocks конфигурации с заполнителями
+cat <<'EOF_REDSOCKS' > "${REDSOCKS_CONF_PATH}.tmp"
+base {
+    log_debug = off;
+    log_info = on;
+    log = "syslog"; # Логирование в системный журнал
+    daemon = on; # Запускать как демон
+}
+redsocks {
+    local_ip = 0.0.0.0; # Слушать на всех интерфейсах
+    local_port = 12345; # Локальный порт, на который будет перенаправляться трафик
+
+    ip = __PROXY_HOST__;
+    port = __PROXY_PORT__;
+
+    type = __PROTOCOL__; # socks5 или http
+__AUTH_SECTION__
+}
+EOF_REDSOCKS
+
+# Заполняем заполнители фактическими значениями
+AUTH_SECTION=""
 if [[ -n "$PROXY_USERNAME" ]]; then
-    printf '%s\n' "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
-    printf '%s\n' "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
+    AUTH_SECTION="    login = \"${PROXY_USERNAME}\";\n    password = \"${PROXY_PASSWORD}\";"
 fi
 
-printf '%s\n' "}" >> "${REDSOCKS_CONF_PATH}"
+sed -i "s|__PROXY_HOST__|${PROXY_HOST}|g" "${REDSOCKS_CONF_PATH}.tmp"
+sed -i "s|__PROXY_PORT__|${PROXY_PORT}|g" "${REDSOCKS_CONF_PATH}.tmp"
+sed -i "s|__PROTOCOL__|${PROTOCOL}|g" "${REDSOCKS_CONF_PATH}.tmp"
+# sed -i "s|__AUTH_SECTION__|${AUTH_SECTION}|g" "${REDSOCKS_CONF_PATH}.tmp" # Эта строка была проблемой, она не обрабатывает переносы строк в AUTH_SECTION
+
+# Для вставки секции с аутентификацией используем echo с заменой \n на реальные переносы
+if [[ -n "$PROXY_USERNAME" ]]; then
+    # Если есть аутентификация, вставляем строки логина и пароля
+    # GNU sed (на Ubuntu) понимает \n как символ новой строки. BSD sed (macOS) не понимает.
+    # Используем подход, который работает с обоими:
+    # Заменяем __AUTH_SECTION__ на placeholder, а затем заменяем placeholder на многострочный текст
+    sed -i "s|__AUTH_SECTION__|TEMP_AUTH_PLACEHOLDER|g" "${REDSOCKS_CONF_PATH}.tmp"
+    sed -i "/TEMP_AUTH_PLACEHOLDER/c\\
+        login = \"${PROXY_USERNAME}\";\\
+        password = \"${PROXY_PASSWORD}\";" "${REDSOCKS_CONF_PATH}.tmp"
+else
+    # Если нет аутентификации, просто удаляем placeholder
+    sed -i "/__AUTH_SECTION__/d" "${REDSOCKS_CONF_PATH}.tmp"
+fi
+
+# Перемещаем временный файл на место
+mv "${REDSOCKS_CONF_PATH}.tmp" "${REDSOCKS_CONF_PATH}"
 
 # Устанавливаем права на файл конфигурации
 chmod 644 ${REDSOCKS_CONF_PATH}
@@ -353,7 +381,7 @@ echo "INFO: redsocks будет запущен через supervisord."
 # --- Генерация SSH-ключей хоста (если они отсутствуют) ---
 echo "INFO: Проверка и генерация SSH-ключей хоста..."
 ssh-keygen -A
-echo "INFO: SSH-ключи хоста сгенерированы (если требовалось). сен."
+echo "INFO: SSH-ключи хоста сгенерированы (если требовалось)."
 
 # --- Получение внешнего IP через настроенный прокси для MOTD ---
 EXTERNAL_IP="Неизвестно"
@@ -760,7 +788,6 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 **MobaXterm (рекомендуется для Windows):**
 
 
-
 Это мощный инструмент, который объединяет SSH-клиент, SFTP, терминал и многое другое.
 
 1. Открой MobaXterm.
@@ -784,7 +811,6 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 **Termius (кроссплатформенный: Windows, macOS, Linux, Mobile):**
 
 
-
 Современный и удобный SSH-клиент с синхронизацией.
 
 1. Открой Termius.
@@ -804,7 +830,6 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 8. Нажми `Save` или `Connect`.
 
 **PuTTY (для Windows):**
-
 
 
 Классический и легковесный SSH-клиент.
