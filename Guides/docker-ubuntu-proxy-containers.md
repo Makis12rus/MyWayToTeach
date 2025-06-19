@@ -279,20 +279,6 @@ printf "%s\n" "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
 printf "%s\n" "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}"
 printf "%s\n" "    daemon = on;" >> "${REDSOCKS_CONF_PATH}"
 printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "redsocks {" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    ip = ${PROXY_HOST};" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    port = ${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}"
-
-# Добавляем данные для аутентификации, если они есть
-if [[ -n "${PROXY_USERNAME}" ]]; then
-    printf "%s\n" "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
-    printf "%s\n" "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
-fi
-
-printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
 
 # Добавляем секцию redsocks-ipq для прозрачного проксирования
 # Это критически важно, так как Redsocks требует определения "редиректора"
@@ -418,7 +404,6 @@ echo "INFO: start.sh завершил подготовку. Запускаем s
 # Запускаем supervisord как основной процесс контейнера
 # Он будет управлять SSHD и Redsocks
 exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
-
 ```
 
 **Ожидаемый результат:** Файл `start.sh` создан в директории `docker_ubuntu_proxies` и содержит утвержденный код. Он обеспечит настройку прозрачного проксирования и инициирует запуск `supervisord`.
