@@ -128,12 +128,6 @@
 # Базовый образ: Мы начинаем с чистой Ubuntu 22.04
 FROM ubuntu:22.04
 
-# !!! КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Установка DNS-сервера для этапа сборки !!!
-# Это гарантирует, что apt update сможет разрешать доменные имена
-# даже если внешняя сеть еще не настроена через Redsocks.
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "INFO: DNS-сервер 8.8.8.8 добавлен в resolv.conf для сборки."
-
 # Обновляем пакеты и устанавливаем необходимые программы:
 # openssh-server - для SSH-доступа
 # curl - для проверки внешнего IP и других сетевых запросов
@@ -144,8 +138,9 @@ RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
 #              так как systemd в контейнерах не используется как PID 1.
 # iptables-persistent - Для сохранения правил iptables после перезапуска.
 # dnsutils - для диагностики DNS, чтобы утилита dig всегда была доступна
+# gettext - содержит утилиту envsubst для надежной подстановки переменных в конфиги
 RUN apt update && \
-    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent dnsutils && \
+    apt install -y openssh-server curl net-tools iproute2 redsocks sudo supervisor iptables-persistent dnsutils gettext && \
     # Очищаем кэш apt, чтобы уменьшить размер образа
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
@@ -276,28 +271,48 @@ echo "DEBUG: PROXY_PASSWORD: '${PROXY_PASSWORD}'"
 # --- Настройка Redsocks ---
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
+REDSOCKS_CONF_TEMPLATE_PATH="/tmp/redsocks.conf.template"
 
-# Создаем конфигурационный файл redsocks, используя printf для каждой строки для надежности
-printf "%s\n" "base {" > "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    log_debug = off;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    daemon = on;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "redsocks {" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    ip = ${PROXY_HOST};" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    port = ${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
-printf "%s\n" "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}"
+# Создаем шаблон Redsocks конфигурации с заполнителями
+cat <<'EOF_TEMPLATE' > "${REDSOCKS_CONF_TEMPLATE_PATH}"
+base {
+    log_debug = off;
+    log_info = on;
+    log = "syslog";
+    daemon = on;
+}
+redsocks {
+    local_ip = 0.0.0.0;
+    local_port = 12345;
 
-# Добавляем данные для аутентификации, если они есть
-if [[ -n "$PROXY_USERNAME" ]]; then
-    printf "%s\n" "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
-    printf "%s\n" "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
+    ip = ${PROXY_HOST};
+    port = ${PROXY_PORT};
+
+    type = ${PROTOCOL};
+${AUTH_SECTION}
+}
+EOF_TEMPLATE
+
+# Формируем секцию аутентификации
+AUTH_SECTION=""
+if [[ -n "${PROXY_USERNAME}" ]]; then
+    AUTH_SECTION="    login = \"${PROXY_USERNAME}\";\n    password = \"${PROXY_PASSWORD}\";"
 fi
 
-printf "%s\n" "}" >> "${REDSOCKS_CONF_PATH}"
+# Используем envsubst для подстановки переменных в шаблон
+# Exporting variables makes them available to envsubst
+export PROXY_HOST PROXY_PORT PROTOCOL AUTH_SECTION
+
+# Проверяем, что envsubst доступен
+if ! command -v envsubst &> /dev/null; then
+    echo "CRITICAL ERROR: envsubst not found. It should have been installed via 'gettext' package in Dockerfile." >&2
+    exit 1
+fi
+
+envsubst < "${REDSOCKS_CONF_TEMPLATE_PATH}" > "${REDSOCKS_CONF_PATH}" || {
+    echo "CRITICAL ERROR: Failed to substitute environment variables into redsocks.conf." >&2
+    exit 1
+}
 
 # Устанавливаем права на файл конфигурации
 chmod 644 ${REDSOCKS_CONF_PATH}
@@ -373,6 +388,7 @@ echo "INFO: Правила IPTABLES сохранены."
 
 # --- Заставляем DNS использовать TCP для Redsocks ---
 echo "INFO: Настройка резолвера для использования TCP для DNS-запросов..."
+# Эта строка теперь здесь, а не в Dockerfile, так как /etc/resolv.conf может быть read-only в Dockerfile
 echo "options use-vc" >> /etc/resolv.conf
 echo "INFO: Опция use-vc добавлена в /etc/resolv.conf."
 
@@ -789,6 +805,7 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 
 **MobaXterm (рекомендуется для Windows):**
 
+[Image of MobaXterm interface]
 
 Это мощный инструмент, который объединяет SSH-клиент, SFTP, терминал и многое другое.
 
@@ -812,6 +829,7 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 
 **Termius (кроссплатформенный: Windows, macOS, Linux, Mobile):**
 
+[Image of Termius interface]
 
 Современный и удобный SSH-клиент с синхронизацией.
 
@@ -833,6 +851,7 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 
 **PuTTY (для Windows):**
 
+[Image of PuTTY interface]
 
 Классический и легковесный SSH-клиент.
 
