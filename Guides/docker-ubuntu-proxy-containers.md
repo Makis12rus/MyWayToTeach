@@ -263,36 +263,28 @@ PROXY_PORT="${PROXY_HOST_PORT#*:}"
 echo "INFO: Настройка Redsocks..."
 REDSOCKS_CONF_PATH="/etc/redsocks.conf"
 # Создаем конфигурационный файл redsocks. Теперь он всегда будет корректно сформирован.
-{ # Открывающая скобка для блока, чтобы cat <<EOF ... EOF был в одной команде
-cat <<EOF > ${REDSOCKS_CONF_PATH}
-base {
-    log_debug = off;
-    log_info = on;
-    log = "syslog"; # Логирование в системный журнал
-    daemon = on; # Запускать как демон
-}
-redsocks {
-    local_ip = 0.0.0.0; # Слушать на всех интерфейсах
-    local_port = 12345; # Локальный порт, на который будет перенаправляться трафик
-
-    ip = ${PROXY_HOST};
-    port = ${PROXY_PORT};
-
-    type = ${PROTOCOL}; # socks5 или http
-EOF
+# Используем здесь более надежный способ, чтобы избежать проблем с экранированием.
+printf '%s\n' "base {" > "${REDSOCKS_CONF_PATH}"
+printf '%s\n' "    log_debug = off;" >> "${REDSOCKS_CONF_PATH}"
+printf '%s\n' "    log_info = on;" >> "${REDSOCKS_CONF_PATH}"
+printf '%s\n' "    log = \"syslog\";" >> "${REDSOCKS_CONF_PATH}" # Логирование в системный журнал
+printf '%s\n' "    daemon = on;" >> "${REDSOCKS_CONF_PATH}" # Запускать как демон
+printf '%s\n' "}" >> "${REDSOCKS_CONF_PATH}"
+printf '%s\n' "redsocks {" >> "${REDSOCKS_CONF_PATH}"
+printf '%s\n' "    local_ip = 0.0.0.0;" >> "${REDSOCKS_CONF_PATH}" # Слушать на всех интерфейсах
+printf '%s\n' "    local_port = 12345;" >> "${REDSOCKS_CONF_PATH}" # Локальный порт, на который будет перенаправляться трафик
+printf '%s\n' "    ip = ${PROXY_HOST};" >> "${REDSOCKS_CONF_PATH}"
+printf '%s\n' "    port = ${PROXY_PORT};" >> "${REDSOCKS_CONF_PATH}"
+printf '%s\n' "    type = ${PROTOCOL};" >> "${REDSOCKS_CONF_PATH}" # socks5 или http
 
 # Добавляем данные для аутентификации, если они есть
 if [[ -n "$PROXY_USERNAME" ]]; then
-    cat <<EOF >> ${REDSOCKS_CONF_PATH}
-    login = "${PROXY_USERNAME}";
-    password = "${PROXY_PASSWORD}";
-EOF
+    printf '%s\n' "    login = \"${PROXY_USERNAME}\";" >> "${REDSOCKS_CONF_PATH}"
+    printf '%s\n' "    password = \"${PROXY_PASSWORD}\";" >> "${REDSOCKS_CONF_PATH}"
 fi
 
-cat <<EOF >> ${REDSOCKS_CONF_PATH}
-}
-EOF
-} # Закрывающая скобка для блока
+printf '%s\n' "}" >> "${REDSOCKS_CONF_PATH}"
+
 # Устанавливаем права на файл конфигурации
 chmod 644 ${REDSOCKS_CONF_PATH}
 echo "INFO: Redsocks конфигурация сгенерирована в ${REDSOCKS_CONF_PATH}."
@@ -572,6 +564,7 @@ services:
     build: .
     container_name: ubuntu_proxy_universal_s3
     # Добавляем необходимые Linux capabilities для работы с IPTABLES.
+    # Это позволяет контейнеру изменять сетевые правила хоста.
     cap_add:
       - NET_ADMIN
     # Пробрасываем порты: "ПОРТ_НА_ХОСТЕ:ПОРТ_ВНУТРИ_КОНТЕЙНЕРА".
@@ -806,7 +799,7 @@ ssh root@localhost -p 2223 # Для третьего сервера (s3)
 
 6. В поле `Username` введи `root`.
 
-7. В поле `Password` введи свой **СЕКРЕТНЫЙ_SSH_ПАРОЛЬ**.
+7. В поле `Password` введи свой **СЕКРЕТНЫЙ_SSH_ПАРОЛЬ`.
 
 8. Нажми `Save` или `Connect`.
 
